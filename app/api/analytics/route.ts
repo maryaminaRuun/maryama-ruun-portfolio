@@ -1,0 +1,3 @@
+import { NextResponse } from "next/server";
+import { ensurePortfolioTables } from "../../../lib/portfolio-db";
+export async function POST(request:Request){const b=await request.json().catch(()=>({})) as {path?:string;session?:string};const path=typeof b.path==="string"&&b.path.startsWith("/")?b.path.slice(0,120):"/";const session=typeof b.session==="string"?b.session.slice(0,80):"anonymous";const db=await ensurePortfolioTables();await db.prepare("INSERT INTO page_views(path,session_id,viewed_at) VALUES(?,?,?)").bind(path,session,new Date().toISOString()).run();return NextResponse.json({ok:true})}
