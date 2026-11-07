@@ -11,7 +11,7 @@ const SETUP_KEY = process.env.ADMIN_SETUP_KEY;
 const OWNER = "ruun4646@gmail.com";
 const OWNER_PW = "Mogadishu-Portfolio-E2E-2026!";
 const EDITOR = "editor@example.com";
-const EDITOR_PW = "Editor-Strong-Passphrase-77";
+const EDITOR_PW = "Blue-Ocean-Lighthouse-Mango-77"; // must not contain the email name
 const SHOTS = "e2e-screenshots";
 mkdirSync(SHOTS, { recursive: true });
 
@@ -218,7 +218,7 @@ async function main() {
   // ---------- Security page ----------
   await nav("My security");
   await page.getByText("Where you're signed in").waitFor();
-  check("security page lists this session", await page.getByText("This browser").isVisible());
+  check("security page lists this session", await page.getByText("This browser").waitFor({ timeout: 10000 }).then(() => true, () => false));
   await page.locator("form", { hasText: "Recovery codes" }).getByLabel("Authenticator code").fill(await freshCode(ownerSecret));
   await page.getByRole("button", { name: "Create new codes" }).click();
   check("recovery codes regenerated with authenticator code", await toast(/New recovery codes/));
