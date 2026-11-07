@@ -78,7 +78,7 @@ export default function EnrollFlow({ mode, token, email }: { mode: "setup" | "in
       <AuthCard title="Connect your authenticator app" subtitle="Scan the code with Google Authenticator, Microsoft Authenticator, 1Password, Authy or similar.">
         <div className="qr-box" dangerouslySetInnerHTML={{ __html: start.qrSvg }} role="img" aria-label="QR code for your authenticator app" />
         <details className="auth-details">
-          <summary>Can't scan? Enter the key manually</summary>
+          <summary>Can&apos;t scan? Enter the key manually</summary>
           <code className="secret-key">{start.secret.match(/.{1,4}/g)?.join(" ")}</code>
           <p className="auth-note">Account: {start.email} · Time-based · 6 digits</p>
         </details>

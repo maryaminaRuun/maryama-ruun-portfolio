@@ -492,8 +492,19 @@ export default function AdminPanel({ name, role }: { name: string; role: Role })
     }
   }, [days]);
   useEffect(() => {
-    load();
-  }, [load]);
+    let alive = true;
+    api<Data>(`/api/admin/content?days=${days}`).then(
+      (d) => {
+        if (!alive) return;
+        setData(d);
+        setError("");
+      },
+      (e) => alive && setError((e as Error).message),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [days]);
 
   function navigate(next: string) {
     setActive(next);

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 
 const links = [
@@ -15,10 +15,18 @@ function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/** The theme lives on <html data-theme>; components read it as an external store. */
+function subscribeTheme(onChange: () => void) {
+  const obs = new MutationObserver(onChange);
+  obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  return () => obs.disconnect();
+}
+const readTheme = () => document.documentElement.dataset.theme === "dark";
+
 export function Header() {
-  const [dark, setDark] = useState(false);
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const dark = useSyncExternalStore(subscribeTheme, readTheme, () => false);
 
   useEffect(() => {
     let saved: string | null = null;
@@ -26,7 +34,6 @@ export function Header() {
       saved = localStorage.getItem("maryama-theme");
     } catch {}
     const next = saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
-    setDark(next);
     document.documentElement.dataset.theme = next ? "dark" : "light";
   }, []);
 
@@ -39,7 +46,6 @@ export function Header() {
 
   function toggleTheme() {
     const next = !dark;
-    setDark(next);
     document.documentElement.dataset.theme = next ? "dark" : "light";
     try {
       localStorage.setItem("maryama-theme", next ? "dark" : "light");
