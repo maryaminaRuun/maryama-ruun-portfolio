@@ -1,9 +1,74 @@
-import { NextResponse } from "next/server";
-import { getChatGPTUser } from "../../../chatgpt-auth";
-import { ensurePortfolioTables } from "../../../../lib/portfolio-db";
-const OWNER = "ruun4646@gmail.com";
-async function authorized(){const u=await getChatGPTUser();return !!u&&u.email.toLowerCase()===OWNER;}
-export async function GET(){if(!await authorized())return NextResponse.json({error:"Forbidden"},{status:403});const db=await ensurePortfolioTables();const [items,messages,summary,daily,pages]=await Promise.all([db.prepare("SELECT * FROM content_items ORDER BY id DESC").all(),db.prepare("SELECT * FROM contact_messages ORDER BY id DESC").all(),db.prepare("SELECT COUNT(*) total, COUNT(DISTINCT session_id) visitors, SUM(CASE WHEN date(viewed_at)=date('now') THEN 1 ELSE 0 END) today FROM page_views").first(),db.prepare("WITH RECURSIVE dates(day) AS (SELECT date('now','-6 days') UNION ALL SELECT date(day,'+1 day') FROM dates WHERE day < date('now')) SELECT dates.day, COUNT(page_views.id) views FROM dates LEFT JOIN page_views ON date(page_views.viewed_at)=dates.day GROUP BY dates.day ORDER BY dates.day").all(),db.prepare("SELECT path,COUNT(*) views FROM page_views GROUP BY path ORDER BY views DESC LIMIT 6").all()]);return NextResponse.json({items:items.results,messages:messages.results,analytics:{summary,daily:daily.results,pages:pages.results}});}
-export async function POST(request:Request){if(!await authorized())return NextResponse.json({error:"Forbidden"},{status:403});const b=await request.json() as Record<string,string>;if(!b.type||!b.title)return NextResponse.json({error:"Type and title required"},{status:400});const db=await ensurePortfolioTables();await db.prepare("INSERT INTO content_items(type,title,description,status,created_at) VALUES(?,?,?,?,?)").bind(b.type,b.title,b.description||"",b.status||"published",new Date().toISOString()).run();return NextResponse.json({ok:true});}
-export async function DELETE(request:Request){if(!await authorized())return NextResponse.json({error:"Forbidden"},{status:403});const {searchParams}=new URL(request.url);const table=searchParams.get("table")==="messages"?"contact_messages":"content_items";const id=Number(searchParams.get("id"));if(!id)return NextResponse.json({error:"Invalid id"},{status:400});const db=await ensurePortfolioTables();await db.prepare(`DELETE FROM ${table} WHERE id = ?`).bind(id).run();return NextResponse.json({ok:true});}
-export async function PATCH(request:Request){if(!await authorized())return NextResponse.json({error:"Forbidden"},{status:403});const b=await request.json() as {id?:number;status?:string;table?:string};if(!b.id)return NextResponse.json({error:"Invalid id"},{status:400});const db=await ensurePortfolioTables();if(b.table==="messages")await db.prepare("UPDATE contact_messages SET status=? WHERE id=?").bind(b.status||"read",b.id).run();else await db.prepare("UPDATE content_items SET status=? WHERE id=?").bind(b.status||"published",b.id).run();return NextResponse.json({ok:true})}
+import { adminGuard, audit } from "../../../../lib/admin";
+import { createItem, deleteRow, getDashboard, reorderItems, setItemFeatured, setItemStatus, setMessageStatus, updateItem, AdminError } from "../../../../lib/admin-content";
+import { handle, idFrom, json } from "../../../../lib/api";
+
+export async function GET(request: Request) {
+  return handle(async () => {
+    const g = await adminGuard(request, "editor");
+    if (!g.ok) return g.response;
+    const days = Number(new URL(request.url).searchParams.get("days") || 30);
+    return json({ me: g.admin, ...(await getDashboard(g.db, g.admin.role, days)) });
+  });
+}
+
+export async function POST(request: Request) {
+  return handle(async () => {
+    const g = await adminGuard(request, "editor", { mutating: true });
+    if (!g.ok) return g.response;
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const id = await createItem(g.db, body);
+    await audit(g.db, g.admin.email, "create", String(body.type), id, { title: body.title });
+    return json({ ok: true, id });
+  });
+}
+
+export async function PUT(request: Request) {
+  return handle(async () => {
+    const g = await adminGuard(request, "editor", { mutating: true });
+    if (!g.ok) return g.response;
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const id = idFrom(body.id);
+    await updateItem(g.db, id, body);
+    await audit(g.db, g.admin.email, "update", "content", id, { title: body.title });
+    return json({ ok: true });
+  });
+}
+
+export async function PATCH(request: Request) {
+  return handle(async () => {
+    const g = await adminGuard(request, "editor", { mutating: true });
+    if (!g.ok) return g.response;
+    const b = (await request.json().catch(() => ({}))) as { id?: unknown; ids?: unknown; status?: unknown; table?: unknown; action?: unknown; featured?: unknown };
+    const action = b.action ?? (b.table === "messages" ? "message-status" : "status");
+    if (action === "reorder") {
+      await reorderItems(g.db, Array.isArray(b.ids) ? (b.ids as number[]) : []);
+      await audit(g.db, g.admin.email, "reorder", "content", null);
+      return json({ ok: true });
+    }
+    const id = idFrom(b.id);
+    if (action === "message-status") {
+      if (g.admin.role !== "owner") throw new AdminError("Only the portfolio owner can manage messages.", 403);
+      await setMessageStatus(g.db, id, b.status);
+    } else if (action === "featured") {
+      await setItemFeatured(g.db, id, b.featured === true);
+      await audit(g.db, g.admin.email, b.featured ? "feature" : "unfeature", "project", id);
+    } else {
+      await setItemStatus(g.db, id, b.status);
+      await audit(g.db, g.admin.email, "status", "content", id, { status: b.status });
+    }
+    return json({ ok: true });
+  });
+}
+
+export async function DELETE(request: Request) {
+  return handle(async () => {
+    const g = await adminGuard(request, "owner", { mutating: true });
+    if (!g.ok) return g.response;
+    const { searchParams } = new URL(request.url);
+    const table = searchParams.get("table") === "messages" ? "messages" : "items";
+    const id = idFrom(searchParams.get("id"));
+    await deleteRow(g.db, table, id);
+    await audit(g.db, g.admin.email, "delete", table, id);
+    return json({ ok: true });
+  });
+}
