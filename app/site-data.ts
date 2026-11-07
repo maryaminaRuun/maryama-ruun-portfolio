@@ -1,4 +1,6 @@
-export const projects = [
+export type StaticProject = { tag: string; title: string; desc: string; url: string; label: string; image: string; tone: string; mark: string };
+
+export const projects: StaticProject[] = [
   { tag: "Government Platform", title: "Somalia Data Protection Authority", desc: "A clear, accessible public platform for regulatory guidance, registration, complaints, and national data-protection resources.", url: "https://dpa.gov.so/", label: "dpa.gov.so", image: "/projects/dpa.jpg", tone: "indigo", mark: "DPA" },
   { tag: "Fintech", title: "SomXchange", desc: "A modern digital financial-services experience built around secure transactions, merchant services, and customer trust.", url: "https://somxchange.com/", label: "somxchange.com", image: "/projects/somxchange.jpg", tone: "blue", mark: "SX" },
   { tag: "Financial Services", title: "Som Microfinance", desc: "A responsive financial platform presenting accessible microfinance services and practical customer pathways.", url: "https://sommicrofinance.com/", label: "sommicrofinance.com", image: "/projects/sommicrofinance.jpg", tone: "emerald", mark: "SM" },
@@ -8,12 +10,16 @@ export const projects = [
   { tag: "Full-Stack E-commerce", title: "VoltX Electronics", desc: "A professional electronics storefront with customer accounts, cart and checkout flows, plus a Supabase-powered admin backend.", url: "https://github.com/maryaminaRuun/E-E-comerce-Electronic-Project", label: "View project on GitHub", image: "/projects/voltx.png", tone: "violet", mark: "VX" },
   { tag: "Management Dashboard", title: "Reza GYM", desc: "A modern gym management dashboard for members, trainers, equipment, payments, revenue, charges, and operational growth.", url: "/contact", label: "Ask about this project", image: "/projects/reza-gym.png", tone: "indigo", mark: "RG" },
   { tag: "AI · Civic Tech · PWA", title: "DigniinAI", desc: "An AI-assisted early-warning and community reporting platform with bilingual alerts, verified reports, coordinator workflows, Supabase, and offline PWA access.", url: "https://github.com/maryaminaRuun/DigniinAI/tree/Maryama", label: "View DigniinAI on GitHub", image: "/projects/digniinai.jpg", tone: "rose", mark: "DA" },
-  { tag: "SaaS · Productivity", title: "TaskFlow", desc: "A polished project and task management workspace with team collaboration, Kanban workflows, progress tracking, priorities, messages, reports, and responsive dashboard analytics.", url: "/contact", label: "Ask about TaskFlow", image: "/projects/taskflow.png", tone: "violet", mark: "TF" },
+  { tag: "SaaS · Productivity", title: "TaskFlow", desc: "A polished project and task management workspace with team collaboration, Kanban workflows, progress tracking, priorities, messages, reports, and responsive dashboard analytics.", url: "https://taskflow-team-management-blush.vercel.app/", label: "View TaskFlow", image: "/projects/taskflow.png", tone: "violet", mark: "TF" },
 ];
 
-// Keep the homepage showcase intentionally limited to verified live products.
-// New projects added to the full portfolio or admin do not replace this set.
-export const homepageProjects = projects.slice(0, 6);
+// Static content below is the original portfolio content (September 2026 source,
+// corrected to match the live site on 7 November 2026). It is used:
+//   1. as the fallback whenever the database is unavailable, and
+//   2. as the one-time seed when the owner applies database upgrade v1.
+// The homepage always shows exactly HOMEPAGE_PROJECT_COUNT projects.
+export const HOMEPAGE_PROJECT_COUNT = 6;
+export const homepageProjects = projects.slice(0, HOMEPAGE_PROJECT_COUNT);
 
 export const services = [
   { number: "01", title: "Full-Stack Development", desc: "Complete web applications built from responsive interfaces through secure APIs, authentication, databases, and deployment.", items: ["React & Next.js", "Node.js & Laravel", "REST APIs", "PostgreSQL & Supabase"] },
@@ -35,3 +41,37 @@ export const posts = [
   { slug: "from-dashboard-to-decision", category: "Dashboards", date: "June 26, 2026", read: "4 min read", title: "From dashboard to decision: showing the data that matters", excerpt: "Why useful dashboards prioritize decisions and actions instead of filling the screen with charts.", content: ["A dashboard is useful when it helps someone decide what to do next. More charts do not automatically create more insight, and too much information often hides the signal.", "I start by identifying the user, the recurring decisions they make, and the few metrics that change those decisions. Summary cards, trends, exceptions, and clear calls to action can then be organized around that workflow.", "The best dashboards connect overview and detail. Users should understand current performance quickly, then move naturally into the records or tasks that require attention."] },
   { slug: "why-responsive-is-not-optional", category: "Frontend", date: "June 12, 2026", read: "4 min read", title: "Responsive design is product quality, not a final polish", excerpt: "A practical approach to building interfaces that remain clear and usable across phones, tablets, and desktops.", content: ["Responsive design should influence component structure from the beginning. Waiting until the desktop version is complete often produces cramped mobile screens and fragile CSS fixes.", "Strong responsive systems use fluid type, deliberate breakpoints, flexible grids, touch-friendly controls, and content priorities that remain clear on small screens.", "Testing real interactions matters more than simply shrinking the browser. Navigation, forms, tables, charts, and long text all need attention because each behaves differently when space becomes limited."] },
 ];
+
+// The live blog marks this post as "Featured".
+export const featuredPostSlug = "building-digniinai";
+
+export const experience = [
+  { period: "2025 — 2026", role: "Software Engineer / Full-Stack Developer", company: "SomXchange Digital Services", desc: "Built and maintained production websites and business systems across government, financial services, and corporate clients." },
+  { period: "2023 — Present", role: "Freelance Graphic Designer", company: "Independent", desc: "Created brand identities, campaigns, marketing materials, and visual systems for growing organizations." },
+  { period: "2025", role: "Software Development Internships", company: "Taskplete · CodeAlpha · Jamhuuriya University", desc: "Built practical skills through real projects, collaboration, and deadline-driven delivery." },
+];
+
+/** Editable site text. Defaults are the exact wording on the live site. */
+export const defaultSettings = {
+  hero_eyebrow: "Available for selected opportunities",
+  hero_name: "Maryama Ruun",
+  hero_role: "Software Engineer & Full-Stack Developer",
+  hero_lead: "I design and build reliable digital products—from government platforms and fintech systems to SaaS products and polished business websites.",
+  bio: "I build complete web products across design, frontend, backend, databases, and deployment. My focus is dependable engineering, purposeful user experience, and clean systems that are practical to maintain.\n\nI have contributed to production work for government, financial-services, and corporate clients through SomXchange Digital Services, alongside independent product work in SaaS, e-commerce, management dashboards, and civic technology.",
+  about_hero_text: "Software Engineer & Full-Stack Developer based in Mogadishu, Somalia.",
+  featured_intro: "Featured production platforms selected from the portfolio admin.",
+  contact_intro: "Share your idea, current challenge, timeline, and where you need support. I will respond with a clear next step.",
+  location: "Mogadishu, Somalia",
+  timezone: "GMT+3",
+  education: "BSc, Computer Science & IT",
+  focus: "Web apps · Digital systems",
+  languages: "Somali · English",
+  email: "maryamiinaruun6@gmail.com",
+  github_url: "https://github.com/maryaminaRuun",
+  linkedin_url: "",
+  years_experience: "1+",
+  products_delivered: "10+",
+  site_url: "https://maryama-ruun-portfolio.ruun4646.chatgpt.site",
+};
+export type SiteSettings = typeof defaultSettings;
+export type SettingKey = keyof SiteSettings;
