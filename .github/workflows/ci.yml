@@ -1,0 +1,10 @@
+name: CI
+on:
+  push:
+    branches: [vercel-migration]
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: node -v && npm -v && echo "registry reachable" && npm view next@16.2.6 version
