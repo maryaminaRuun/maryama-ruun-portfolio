@@ -16,6 +16,12 @@ const SHOTS = "e2e-screenshots";
 mkdirSync(SHOTS, { recursive: true });
 
 const results = [];
+let currentStep = "start";
+const step = (name) => {
+  currentStep = name;
+  console.log(`--- ${name}`);
+};
+const openPages = [];
 const check = (name, ok, extra = "") => {
   results.push([ok ? "PASS" : "FAIL", name, extra]);
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${extra ? `  — ${extra}` : ""}`);
@@ -54,6 +60,7 @@ async function main() {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await ctx.newPage();
+  openPages.push(["owner", page]);
   const consoleErrors = [];
   const expected = /Failed to load resource: .*(40[0139]|409|429|503)/;
   page.on("console", (m) => m.type() === "error" && !expected.test(m.text()) && consoleErrors.push(m.text()));
@@ -225,12 +232,16 @@ async function main() {
   const inviteUrl = await page.locator(".invite-card input").inputValue();
   await page.screenshot({ path: `${SHOTS}/admin-team.png` });
   await page.setViewportSize({ width: 390, height: 844 });
-  await nav("Overview").catch(() => {});
+  await page.locator(".admin-menu").click();
+  await nav("Overview");
+  await page.locator(".admin-kpis").waitFor();
   await page.screenshot({ path: `${SHOTS}/admin-mobile.png` });
   await page.setViewportSize({ width: 1440, height: 900 });
+  step("editor invite flow");
 
   const ectx = await browser.newContext({ viewport: { width: 1280, height: 860 } });
   const ep = await ectx.newPage();
+  openPages.push(["editor", ep]);
   ep.on("pageerror", (e) => consoleErrors.push(`editor: ${e}`));
   await ep.goto(inviteUrl);
   await ep.getByLabel("New password").fill(EDITOR_PW);
@@ -253,6 +264,7 @@ async function main() {
   check("invite link cannot be reused", (await ep.request.post(B + "/api/auth/enroll/start", { headers: { origin: B }, data: { mode: "invite", token: new URL(inviteUrl).searchParams.get("token"), password: EDITOR_PW } })).status() === 403);
   await ectx.close();
 
+  step("sign out and recovery-code sign-in");
   // ---------- Sign out, sign in with a recovery code ----------
   await page.locator(".admin-signout").click();
   await page.getByRole("heading", { name: "Sign in" }).waitFor();
@@ -295,7 +307,12 @@ async function main() {
 try {
   await main();
 } catch (e) {
-  check("e2e run completed", false, String(e?.stack || e).slice(0, 500));
+  check("e2e run completed", false, `step "${currentStep}": ${String(e?.stack || e).slice(0, 700)}`);
+  for (const [name, p] of openPages) {
+    await p.screenshot({ path: `${SHOTS}/FAILURE-${name}.png`, fullPage: true }).catch(() => {});
+    console.log(`URL at failure (${name}): ${p.url()}`);
+    console.log((await p.locator("body").innerText().catch(() => "")).slice(0, 600));
+  }
 }
 const failed = results.filter((r) => r[0] === "FAIL");
 console.log(`\nE2E: ${results.length - failed.length}/${results.length} passed`);
