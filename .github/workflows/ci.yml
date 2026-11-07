@@ -7,4 +7,14 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - run: node -v && npm -v && echo "registry reachable" && npm view next@16.2.6 version
+      - name: versions
+        run: |
+          for p in @libsql/client @vercel/blob qrcode @types/qrcode tsx @playwright/test playwright next eslint-config-next @types/node; do
+            node -e "
+              const p=process.argv[1];
+              const t=JSON.parse(require('child_process').execSync('npm view '+p+' time --json').toString());
+              const cutoff=Date.now()-21*864e5;
+              const vs=Object.entries(t).filter(([v,d])=>/^\d+\.\d+\.\d+$/.test(v)&&new Date(d).getTime()<cutoff).sort((a,b)=>new Date(b[1])-new Date(a[1]));
+              console.log('PKG',p,'latest-stable-3wk-old',vs[0]&&vs[0][0],vs[0]&&vs[0][1].slice(0,10));
+            " "$p"
+          done
