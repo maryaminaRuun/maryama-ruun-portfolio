@@ -99,3 +99,50 @@ export async function applySchemaV1(db: D1Like): Promise<void> {
     await db.prepare(sql).run();
   }
 }
+
+// ---- Vercel hosting additions (additive, idempotent) ----
+
+/** Login data. Never included in backups (see SECRET_TABLES). */
+export const AUTH_TABLES: string[] = [
+  "CREATE TABLE IF NOT EXISTS admin_accounts (email TEXT PRIMARY KEY, password_hash TEXT NOT NULL, totp_secret TEXT NOT NULL, totp_last_step INTEGER NOT NULL DEFAULT 0, recovery_codes TEXT NOT NULL DEFAULT '[]', failed_attempts INTEGER NOT NULL DEFAULT 0, locked_until INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, last_login_at TEXT)",
+  "CREATE TABLE IF NOT EXISTS admin_sessions (id_hash TEXT PRIMARY KEY, email TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL, ip TEXT, user_agent TEXT)",
+  "CREATE INDEX IF NOT EXISTS admin_sessions_email_idx ON admin_sessions(email)",
+  "CREATE TABLE IF NOT EXISTS admin_invites (token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, created_at TEXT NOT NULL, expires_at INTEGER NOT NULL, created_by TEXT NOT NULL, used_at TEXT)",
+];
+
+/** Tables that hold credentials or throttling state: excluded from every export. */
+export const SECRET_TABLES = new Set(["admin_accounts", "admin_sessions", "admin_invites", "rate_limits"]);
+
+const appSchemaReady = new WeakMap<D1Like, Promise<void>>();
+
+/**
+ * Full schema for the Vercel deployment: original tables, upgrade v1 columns and
+ * tables, Blob media URL and login tables. Only CREATE IF NOT EXISTS and missing
+ * ADD COLUMN, so it never changes existing rows. Content is NOT seeded here; the
+ * owner chooses "Import backup" or "Start with original content".
+ */
+export async function ensureAppSchema(db: D1Like): Promise<void> {
+  let ready = appSchemaReady.get(db);
+  if (!ready) {
+    ready = (async () => {
+      await ensureLegacyTables(db);
+      await applySchemaV1(db);
+      for (const sql of AUTH_TABLES) await db.prepare(sql).run();
+      if (!(await columnNames(db, "media")).has("url")) await db.prepare("ALTER TABLE media ADD COLUMN url TEXT").run();
+    })();
+    appSchemaReady.set(db, ready);
+    ready.catch(() => appSchemaReady.delete(db));
+  }
+  return ready;
+}
+
+export type DbState = "uninitialized" | "ready";
+
+/** "uninitialized" = schema exists but no content was imported or seeded yet. */
+export async function getDbState(db: D1Like): Promise<DbState> {
+  if ((await getSchemaVersion(db)) >= 1) return "ready";
+  const row = await db
+    .prepare("SELECT (SELECT COUNT(*) FROM content_items) AS c, (SELECT COUNT(*) FROM contact_messages) AS m")
+    .first<{ c: number; m: number }>();
+  return Number(row?.c ?? 0) === 0 && Number(row?.m ?? 0) === 0 ? "uninitialized" : "ready";
+}

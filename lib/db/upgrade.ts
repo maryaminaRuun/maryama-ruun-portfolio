@@ -1,6 +1,6 @@
 import { defaultSettings, experience, featuredPostSlug, HOMEPAGE_PROJECT_COUNT, posts, projects, services, skillGroups } from "../../app/site-data";
 import { exportDatabase } from "./backup";
-import { applySchemaV1, ensureLegacyTables, getSchemaVersion } from "./schema";
+import { applySchemaV1, ensureLegacyTables, getDbState, getSchemaVersion } from "./schema";
 import type { D1Like, D1PreparedStatementLike, SqlValue } from "./types";
 
 export function slugify(text: string): string {
@@ -79,6 +79,29 @@ export async function applyUpgradeV1(db: D1Like, actor: string, backupSha256: st
 
   await applySchemaV1(db);
 
+  const plan = await buildV1Writes(db, actor, "v1_content_model", backupSha256);
+  // D1 runs a batch as a single transaction: either every row is written or none.
+  await db.batch(plan.writes);
+
+  const after = await exportDatabase(db);
+  return {
+    fromVersion,
+    toVersion: 1,
+    inserted: plan.inserted,
+    skippedExisting: plan.skippedExisting,
+    legacySlugsAdded: plan.legacySlugsAdded,
+    rowCountsBefore: before.counts,
+    rowCountsAfter: after.counts,
+  };
+}
+
+/**
+ * The writes that bring a v0 content set to v1: original portfolio content (only
+ * where no published entry with the same type and title exists), slugs for old
+ * blog posts, default site text, and the migration record. Nothing is executed
+ * here; callers run the list in one transaction.
+ */
+export async function buildV1Writes(db: D1Like, actor: string, migrationName: string, backupSha256: string | null) {
   const now = new Date().toISOString();
   const inserted: Record<string, number> = {};
   const skippedExisting: Record<string, number> = {};
@@ -105,40 +128,38 @@ export async function applyUpgradeV1(db: D1Like, actor: string, backupSha256: st
     );
     inserted[row.type] = (inserted[row.type] ?? 0) + 1;
   }
-
-  // Give pre-existing blog posts (added through the old admin) a unique slug so they get a page.
   const legacyPosts = await db
     .prepare("SELECT id, title FROM content_items WHERE type = 'blog' AND (slug IS NULL OR slug = '')")
     .all<{ id: number; title: string }>();
   for (const p of legacyPosts.results) {
     writes.push(db.prepare("UPDATE content_items SET slug = ? WHERE id = ? AND (slug IS NULL OR slug = '')").bind(`${slugify(p.title)}-${p.id}`, p.id));
   }
-
   for (const [key, value] of Object.entries(defaultSettings)) {
     writes.push(db.prepare("INSERT OR IGNORE INTO site_settings (key, value, updated_at) VALUES (?, ?, ?)").bind(key, value, now));
   }
-
   writes.push(
     db
-      .prepare("INSERT INTO schema_migrations (version, name, applied_at, applied_by, backup_sha256) VALUES (1, 'v1_content_model', ?, ?, ?)")
-      .bind(now, actor, backupSha256),
+      .prepare("INSERT INTO schema_migrations (version, name, applied_at, applied_by, backup_sha256) VALUES (1, ?, ?, ?, ?)")
+      .bind(migrationName, now, actor, backupSha256),
     db
-      .prepare("INSERT INTO audit_log (actor, action, entity, entity_id, detail, created_at) VALUES (?, 'upgrade', 'database', '1', ?, ?)")
-      .bind(actor, JSON.stringify({ inserted, skippedExisting, backupSha256 }), now),
+      .prepare("INSERT INTO audit_log (actor, action, entity, entity_id, detail, created_at) VALUES (?, ?, 'database', '1', ?, ?)")
+      .bind(actor, migrationName === "v1_content_model" ? "upgrade" : migrationName, JSON.stringify({ inserted, skippedExisting, backupSha256 }), now),
   );
-  // D1 runs a batch as a single transaction: either every row is written or none.
-  await db.batch(writes);
+  return { writes, inserted, skippedExisting, legacySlugsAdded: legacyPosts.results.length };
+}
 
-  const after = await exportDatabase(db);
-  return {
-    fromVersion,
-    toVersion: 1,
-    inserted,
-    skippedExisting,
-    legacySlugsAdded: legacyPosts.results.length,
-    rowCountsBefore: before.counts,
-    rowCountsAfter: after.counts,
-  };
+/**
+ * Fresh database (no content, no messages): fill it with the original portfolio
+ * content. Refuses if anything is already there, so it can never overwrite data.
+ */
+export async function initializeWithOriginalContent(db: D1Like, actor: string) {
+  if ((await getDbState(db)) !== "uninitialized") {
+    throw new UpgradeError("already_applied", "This database already has content. Nothing was changed.");
+  }
+  await applySchemaV1(db);
+  const plan = await buildV1Writes(db, actor, "vercel_init_original_content", null);
+  await db.batch(plan.writes);
+  return { inserted: plan.inserted };
 }
 
 export class UpgradeError extends Error {

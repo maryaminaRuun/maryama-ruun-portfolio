@@ -1,3 +1,4 @@
+import { SECRET_TABLES } from "./schema";
 import type { D1Like } from "./types";
 
 export type BackupResult = {
@@ -48,12 +49,13 @@ async function sha256Hex(text: string): Promise<string> {
 export async function exportDatabase(db: D1Like): Promise<BackupResult> {
   const master = await db
     .prepare(
-      "SELECT type, name, tbl_name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'd1_%' ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name",
+      "SELECT type, name, tbl_name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'd1_%' AND name NOT LIKE 'libsql_%' AND name NOT LIKE '_litestream%' ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name",
     )
     .all<MasterRow>();
 
-  const tables = master.results.filter((r) => r.type === "table");
-  const others = master.results.filter((r) => r.type !== "table");
+  // Credentials and throttling state are never exported.
+  const tables = master.results.filter((r) => r.type === "table" && !SECRET_TABLES.has(r.name));
+  const others = master.results.filter((r) => r.type !== "table" && !SECRET_TABLES.has(r.tbl_name));
   const counts: Record<string, number> = {};
   const body: string[] = [];
 

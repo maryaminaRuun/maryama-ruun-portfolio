@@ -46,3 +46,7 @@ next-env.d.ts
 maryama-portfolio-backup-*.sql
 *.db
 *.db-journal
+
+# local databases
+/local.db*
+/.e2e/
