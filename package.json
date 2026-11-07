@@ -13,7 +13,10 @@
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
     "validate:artifact": "bash scripts/validate-artifact.sh",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
+    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
+    "test:logic": "npx --yes tsx --test tests/db.test.ts tests/admin.test.ts",
+    "backup:verify": "npx --yes tsx scripts/verify-backup.ts",
+    "upgrade:rehearse": "npx --yes tsx scripts/rehearse-upgrade.ts"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

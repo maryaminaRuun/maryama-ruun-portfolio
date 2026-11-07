@@ -40,3 +40,9 @@ next-env.d.ts
 /.sites-runtime/
 /outputs/
 /work/
+
+# database backups and local copies (contain personal data — never commit)
+/backups/
+maryama-portfolio-backup-*.sql
+*.db
+*.db-journal

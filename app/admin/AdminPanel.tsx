@@ -905,7 +905,7 @@ function Overview({ data, days, setDays, onNav, isOwner, unread }: { data: Data;
               <h2>Countries &amp; devices</h2>
             </div>
           </div>
-          <Bars rows={[...data.analytics.countries, ...data.analytics.devices]} empty={data.schemaVersion >= 1 ? "Appears for new visits." : "Available after the database upgrade."} />
+          <Bars rows={[...data.analytics.countries.map((r) => ({ ...r, label: `Country · ${r.label}` })), ...data.analytics.devices.map((r) => ({ ...r, label: `Device · ${r.label}` }))]} empty={data.schemaVersion >= 1 ? "Appears for new visits." : "Available after the database upgrade."} />
         </article>
         <article className="admin-panel-card">
           <div className="panel-heading">

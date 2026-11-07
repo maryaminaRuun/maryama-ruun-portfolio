@@ -16,8 +16,28 @@ const SIGN_IN_PATH = "/signin-with-chatgpt";
 const SIGN_OUT_PATH = "/signout-with-chatgpt";
 const CALLBACK_PATH = "/callback";
 
+/**
+ * The identity headers are injected by ChatGPT Sites hosting. On any other host
+ * (e.g. a plain Cloudflare Workers staging copy) a visitor could send them
+ * themselves, so they are only trusted on *.chatgpt.site, localhost, or hosts
+ * listed in the ADMIN_TRUSTED_HOSTS environment variable (comma-separated).
+ */
+export async function isPlatformAuthTrusted(host: string | null): Promise<boolean> {
+  const h = (host || "").toLowerCase().split(":")[0]!;
+  if (!h) return false;
+  if (h.endsWith(".chatgpt.site") || h === "localhost" || h === "127.0.0.1") return true;
+  try {
+    const { env } = await import("cloudflare:workers");
+    const extra = String((env as Record<string, unknown>).ADMIN_TRUSTED_HOSTS || "");
+    return extra.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean).includes(h);
+  } catch {
+    return false;
+  }
+}
+
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const requestHeaders = await headers();
+  if (!(await isPlatformAuthTrusted(requestHeaders.get("host")))) return null;
   const email = requestHeaders.get(USER_EMAIL_HEADER);
   if (!email) return null;
 
