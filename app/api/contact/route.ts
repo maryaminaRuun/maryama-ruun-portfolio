@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ensurePortfolioTables } from "../../../lib/portfolio-db";
+import { ensurePortfolioTables, isInitialized } from "../../../lib/portfolio-db";
 import { clientIp, cleanText, EMAIL_RE, rateLimit } from "../../../lib/security";
 
 export async function POST(request: Request) {
@@ -16,7 +16,10 @@ export async function POST(request: Request) {
   if (!name || !email || !subject || !message) return NextResponse.json({ error: "Please complete every field." }, { status: 400 });
   if (!EMAIL_RE.test(email)) return NextResponse.json({ error: "Please enter a valid email address." }, { status: 400 });
 
-  const db = await ensurePortfolioTables();
+  const db = await ensurePortfolioTables().catch(() => null);
+  if (!db || !(await isInitialized(db))) {
+    return NextResponse.json({ error: "The contact form is not available yet. Please email me directly." }, { status: 503 });
+  }
   if (!(await rateLimit(db, `contact:${clientIp(request)}`, 5, 3600))) {
     return NextResponse.json({ error: "Too many messages from this connection. Please try again later or email me directly." }, { status: 429 });
   }

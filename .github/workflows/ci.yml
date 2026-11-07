@@ -2,19 +2,75 @@ name: CI
 on:
   push:
     branches: [vercel-migration]
+  pull_request:
+    branches: [vercel-migration]
   workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
-  probe:
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - name: versions
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
         run: |
-          for p in @libsql/client @vercel/blob qrcode @types/qrcode tsx @playwright/test playwright next eslint-config-next @types/node; do
-            node -e "
-              const p=process.argv[1];
-              const t=JSON.parse(require('child_process').execSync('npm view '+p+' time --json').toString());
-              const cutoff=Date.now()-21*864e5;
-              const vs=Object.entries(t).filter(([v,d])=>/^\d+\.\d+\.\d+$/.test(v)&&new Date(d).getTime()<cutoff).sort((a,b)=>new Date(b[1])-new Date(a[1]));
-              console.log('PKG',p,'latest-stable-3wk-old',vs[0]&&vs[0][0],vs[0]&&vs[0][1].slice(0,10));
-            " "$p"
-          done
+          if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+
+      - name: Save lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-lock
+          path: package-lock.json
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit & integration tests (database, backup/import, auth, admin)
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Start production server (throwaway local database)
+        env:
+          TURSO_DATABASE_URL: file:/tmp/e2e.db
+          AUTH_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
+          ADMIN_SETUP_KEY: ci-only-setup-key-0123456789
+        run: |
+          nohup npx next start -p 3100 > /tmp/next.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:3100/robots.txt >/dev/null && break; sleep 1; done
+          curl -sf http://localhost:3100/robots.txt
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser end-to-end tests
+        env:
+          E2E_BASE_URL: http://localhost:3100
+          ADMIN_SETUP_KEY: ci-only-setup-key-0123456789
+        run: npm run test:e2e
+
+      - name: Server log
+        if: always()
+        run: tail -n 200 /tmp/next.log || true
+
+      - name: Screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: e2e-screenshots/
+          if-no-files-found: ignore

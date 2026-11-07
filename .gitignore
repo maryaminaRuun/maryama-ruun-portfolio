@@ -50,3 +50,4 @@ maryama-portfolio-backup-*.sql
 # local databases
 /local.db*
 /.e2e/
+/e2e-screenshots/

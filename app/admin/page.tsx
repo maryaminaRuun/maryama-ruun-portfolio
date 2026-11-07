@@ -1,26 +1,36 @@
 import type { Metadata } from "next";
-import { chatGPTSignOutPath, requireChatGPTUser } from "../chatgpt-auth";
-import { resolveRole } from "../../lib/admin";
-import { ensurePortfolioTables } from "../../lib/portfolio-db";
+import { getAdminSession, OWNER_EMAIL } from "../../lib/admin";
+import { hasAccount } from "../../lib/auth/accounts";
+import { authSecret } from "../../lib/auth/crypto";
+import { setupKeyConfigured } from "../../lib/auth/flows";
+import { ensureAppSchema } from "../../lib/db/schema";
+import { getEnvDb } from "../../lib/db/types";
 import AdminPanel from "./AdminPanel";
+import AdminLogin from "./AdminLogin";
+import { AuthCard } from "./AuthCard";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Admin", robots: { index: false, follow: false } };
 
 export default async function AdminPage() {
-  const user = await requireChatGPTUser("/admin");
-  const role = await resolveRole(await ensurePortfolioTables().catch(() => null), user.email);
-  if (!role) {
+  let problem: string | null = null;
+  try {
+    authSecret();
+  } catch (e) {
+    problem = (e as Error).message;
+  }
+  const db = problem ? null : await getEnvDb().catch((e: Error) => ((problem = e.message), null));
+  if (!db || problem) {
     return (
-      <main className="admin-denied">
-        <h1>Access denied</h1>
-        <p>This dashboard is restricted to the portfolio owner and invited editors.</p>
-        <p>
-          Signed in as <b>{user.email}</b>. <a href={chatGPTSignOutPath("/admin")}>Use a different account</a>
-        </p>
-        <a href="/">Return to portfolio</a>
-      </main>
+      <AuthCard title="Admin is not configured yet">
+        <p className="auth-note">{problem}</p>
+        <p className="auth-note">After adding the setting in Vercel, redeploy the preview and reload this page.</p>
+      </AuthCard>
     );
   }
-  return <AdminPanel name={user.displayName} role={role} signOut={chatGPTSignOutPath("/")} />;
+  await ensureAppSchema(db);
+  const session = await getAdminSession(db);
+  if (session) return <AdminPanel name={session.name} role={session.role} />;
+  const ownerExists = await hasAccount(db, OWNER_EMAIL);
+  return <AdminLogin ownerExists={ownerExists} setupAvailable={setupKeyConfigured()} />;
 }

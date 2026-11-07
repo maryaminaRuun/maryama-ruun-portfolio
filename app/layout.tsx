@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(defaultSettings.site_url),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : defaultSettings.site_url)),
   title: {
     default: "Maryama Ruun | Software Engineer & Full-Stack Developer",
     template: "%s | Maryama Ruun",
@@ -44,10 +44,6 @@ export const metadata: Metadata = {
     images: ["/maryama-ruun.png"],
   },
   robots: { index: true, follow: true },
-  // Required by the current ChatGPT Sites hosting pipeline (see tests/rendered-html.test.mjs).
-  other: {
-    "codex-preview": "development",
-  },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

@@ -1,28 +1,32 @@
 import { NextResponse } from "next/server";
-import { getChatGPTUser } from "../app/chatgpt-auth";
-import { ensureLegacyTables, tableExists } from "./db/schema";
+import { sessionFromCookies, sessionFromRequest } from "./auth/web";
+import { ensureAppSchema, tableExists } from "./db/schema";
 import type { D1Like } from "./db/types";
 import { getEnvDb } from "./db/types";
 import { isSameOrigin } from "./security";
-
 import { OWNER_EMAIL_LOWER } from "./owner";
 import { resolveRole, type Role } from "./roles";
 
 export { resolveRole, type Role };
 export const OWNER_EMAIL = OWNER_EMAIL_LOWER;
-export type AdminSession = { email: string; name: string; role: Role };
+export type AdminSession = { email: string; name: string; role: Role; sessionIdHash: string };
 
 const RANK: Record<Role, number> = { editor: 1, owner: 2 };
 
+function displayName(email: string, role: Role) {
+  return role === "owner" ? "Maryama Ruun" : email;
+}
+
 /**
- * Identity comes from the hosting platform's signed-in user (ChatGPT sign-in,
- * which supports MFA on the account). Authorization (owner/editor) is ours.
+ * Identity: the built-in sign-in (password + mandatory authenticator code),
+ * checked through a server-side session. Authorization: owner (fixed) or editor
+ * (invited). A removed editor loses access on their next request.
  */
-export async function getAdminSession(db: D1Like | null): Promise<AdminSession | null> {
-  const user = await getChatGPTUser();
-  if (!user) return null;
-  const role = await resolveRole(db, user.email);
-  return role ? { email: user.email.toLowerCase(), name: user.displayName, role } : null;
+export async function getAdminSession(db: D1Like, request?: Request): Promise<AdminSession | null> {
+  const s = request ? await sessionFromRequest(db, request) : await sessionFromCookies(db);
+  if (!s) return null;
+  const role = await resolveRole(db, s.email);
+  return role ? { email: s.email, name: displayName(s.email, role), role, sessionIdHash: s.idHash } : null;
 }
 
 type GuardOk = { ok: true; db: D1Like; admin: AdminSession };
@@ -33,9 +37,9 @@ export async function adminGuard(request: Request, minRole: Role, opts: { mutati
     return { ok: false, response: NextResponse.json({ error: "Cross-site request blocked." }, { status: 403 }) };
   }
   const db = await getEnvDb();
-  await ensureLegacyTables(db);
-  const admin = await getAdminSession(db);
-  if (!admin) return { ok: false, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  await ensureAppSchema(db);
+  const admin = await getAdminSession(db, request);
+  if (!admin) return { ok: false, response: NextResponse.json({ error: "Your session has ended. Sign in again." }, { status: 401 }) };
   if (RANK[admin.role] < RANK[minRole]) {
     return { ok: false, response: NextResponse.json({ error: "Only the portfolio owner can do this." }, { status: 403 }) };
   }

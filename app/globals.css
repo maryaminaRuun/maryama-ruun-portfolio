@@ -142,3 +142,32 @@ label.primary-action.upload-button{background:linear-gradient(135deg,#6c63ff,#5a
 @media(min-width:761px){.pro-admin>aside{position:sticky;top:0;height:100vh;align-self:start}}
 .image-actions .link-button{font-size:12px}
 .admin-toasts .admin-toast:nth-last-child(n+4){display:none}
+
+/* ---- Vercel: sign-in & security ---- */
+.auth-shell{min-height:100vh;display:grid;place-items:center;background:#f6f7fb;color:#1e2235;padding-block:32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.auth-card{width:min(440px,100%);background:#fff;border:1px solid #e6e8f0;border-radius:20px;padding:30px;box-shadow:0 20px 60px #1518320f;display:flex;flex-direction:column;gap:14px}
+.auth-brand{color:#1e2235!important;margin-bottom:6px}.auth-brand small{color:#8a8ea2!important}
+.auth-card h1{margin:0;font-size:24px;letter-spacing:-.02em;text-wrap:balance}
+.auth-sub,.auth-note{margin:0;color:#5f6479;font-size:14px;line-height:1.55}
+.auth-note code,.auth-card code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+.auth-form{display:flex;flex-direction:column;gap:14px}
+.auth-form label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:700;color:#4c5168}
+.auth-form label small{font-weight:500;color:#8a8ea2}
+.auth-form input{border:1px solid #dfe2ea;border-radius:11px;padding:12px 13px;font:inherit;font-size:15px;font-weight:500;color:#1e2235}
+.auth-form input[inputmode=numeric]{font-size:22px;letter-spacing:.3em;text-align:center;font-variant-numeric:tabular-nums}
+.auth-primary{display:flex;justify-content:center;align-items:center;border:0;background:#6c63ff;color:#fff!important;font-weight:750;font-size:15px;padding:13px 16px;border-radius:12px;cursor:pointer;text-decoration:none}
+.auth-primary:disabled,.auth-primary.disabled{opacity:.5;cursor:not-allowed;pointer-events:none}
+.auth-link{background:none;border:0;color:#6c63ff;font-weight:700;font-size:13px;cursor:pointer;padding:0;align-self:flex-start;text-decoration:none}
+.auth-error{margin:0;padding:10px 12px;border-radius:10px;background:#fff0f2;border:1px solid #ffd2d9;color:#9c2238;font-size:13px}
+.auth-check{display:flex;gap:9px;align-items:flex-start;font-size:13px;color:#4c5168}
+.qr-box{align-self:center;width:220px;height:220px;padding:8px;background:#fff;border:1px solid #e6e8f0;border-radius:14px}
+.qr-box svg{width:100%;height:100%;display:block}
+.auth-details summary{cursor:pointer;font-size:13px;font-weight:700;color:#6c63ff}
+.secret-key{display:block;margin:10px 0 6px;padding:10px;background:#f3f4f8;border-radius:9px;font-size:14px!important;letter-spacing:.08em;word-break:break-all}
+.recovery-codes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0;padding:14px 14px 14px 34px;background:#f3f4f8;border-radius:12px}
+.recovery-codes code{font-size:14px!important;font-variant-numeric:tabular-nums}
+.admin-signout{border:0;background:none;color:#9aa0b8;font-size:16px;cursor:pointer;padding:4px}.admin-signout:hover{color:#fff}
+.invite-card{margin-top:14px;display:flex;flex-direction:column;gap:8px;font-size:13px}.invite-card p{margin:0;color:#5f6479}
+.copy-row{display:flex;gap:8px}.copy-row input{flex:1;min-width:0;border:1px solid #dfe2ea;border-radius:9px;padding:9px 11px;font-family:ui-monospace,monospace;font-size:12px}
+.copy-row button{border:0;background:#6c63ff;color:#fff;font-weight:750;border-radius:9px;padding:9px 14px;cursor:pointer}
+.db-view h3{margin:0 0 6px}

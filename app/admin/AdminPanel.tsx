@@ -22,6 +22,8 @@ type AuditRow = { actor: string; action: string; entity: string; entity_id: stri
 type Data = {
   me: { email: string; name: string; role: Role };
   schemaVersion: number;
+  dbState: "uninitialized" | "ready";
+  storage: { images: string };
   items: Item[]; messages: Message[]; analytics: Analytics; settings: Record<string, string>;
   media: Media[]; users: User[]; audit: AuditRow[];
 };
@@ -95,6 +97,10 @@ const fmtBytes = (n: number) => (n > 1_000_000 ? `${(n / 1_000_000).toFixed(1)} 
 async function api<T = { ok: boolean }>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, { ...init, headers: init?.body instanceof FormData ? init.headers : { "content-type": "application/json", ...init?.headers } });
   const data = (await r.json().catch(() => ({}))) as T & { error?: string };
+  if (r.status === 401 && url.startsWith("/api/admin/content") && (!init?.method || init.method === "GET")) {
+    // Session ended (idle timeout, signed out elsewhere): show the sign-in page.
+    window.location.reload();
+  }
   if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
   return data;
 }
@@ -453,7 +459,12 @@ function ItemEditor({
 }
 
 // ---------- Main panel ----------
-export default function AdminPanel({ name, role, signOut }: { name: string; role: Role; signOut: string }) {
+async function signOut() {
+  await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+  window.location.href = "/admin";
+}
+
+export default function AdminPanel({ name, role }: { name: string; role: Role }) {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState("");
   const [active, setActive] = useState("overview");
@@ -541,6 +552,7 @@ export default function AdminPanel({ name, role, signOut }: { name: string; role
           { key: "database", label: "Database & backup", icon: "⛁", group: "SETTINGS", alert: upgraded ? 0 : 1 },
         ]
       : []),
+    { key: "security", label: "My security", icon: "⚿", group: "ACCOUNT" },
   ] as { key: string; label: string; icon: string; group: string; count?: number; alert?: number }[];
   const groups = Array.from(new Set(nav.map((n) => n.group)));
   const title = nav.find((n) => n.key === active)?.label ?? "Dashboard";
@@ -581,9 +593,9 @@ export default function AdminPanel({ name, role, signOut }: { name: string; role
             <b>{name}</b>
             <small>{isOwner ? "Owner" : "Editor"}</small>
           </span>
-          <a href={signOut} title="Sign out" aria-label="Sign out">
-            ↗
-          </a>
+          <button type="button" className="admin-signout" onClick={signOut} title="Sign out" aria-label="Sign out">
+            ⏻
+          </button>
         </div>
       </aside>
       {menu && <button className="admin-overlay" onClick={() => setMenu(false)} aria-label="Close navigation" />}
@@ -607,7 +619,21 @@ export default function AdminPanel({ name, role, signOut }: { name: string; role
           </div>
         </header>
 
-        {data && !upgraded ? (
+        {data && data.dbState === "uninitialized" ? (
+          <div className="admin-banner" role="status">
+            <b>Set up the database.</b>{" "}
+            {isOwner ? (
+              <>
+                This deployment has a new, empty database. Import a backup of the live site, or start with the original portfolio content.{" "}
+                <button className="link-button" onClick={() => navigate("database")}>
+                  Open Database &amp; backup →
+                </button>
+              </>
+            ) : (
+              "Ask the owner to import the site's backup."
+            )}
+          </div>
+        ) : data && !upgraded ? (
           <div className="admin-banner" role="status">
             <b>Database upgrade available.</b>{" "}
             {isOwner ? (
@@ -737,6 +763,8 @@ export default function AdminPanel({ name, role, signOut }: { name: string; role
           <Messages data={data} unread={unread} patch={patch} askDelete={askDelete} />
         ) : active === "team" && isOwner ? (
           <Team data={data} upgraded={upgraded} run={run} askDelete={askDelete} />
+        ) : active === "security" ? (
+          <SecurityView notify={notify} />
         ) : active === "database" && isOwner ? (
           <DatabaseView data={data} notify={notify} reload={load} />
         ) : (
@@ -1130,19 +1158,25 @@ function Messages({ data, unread, patch, askDelete }: { data: Data; unread: numb
 }
 
 function Team({ data, upgraded, run, askDelete }: { data: Data; upgraded: boolean; run: (a: () => Promise<unknown>, ok: string) => Promise<void>; askDelete: (t: string, u: string, ok: string) => void }) {
+  const [invite, setInvite] = useState<{ email: string; url: string } | null>(null);
+  async function sendInvite(email: string, form?: HTMLFormElement) {
+    await run(async () => {
+      const r = await api<{ inviteUrl: string }>("/api/admin/users", { method: "POST", body: JSON.stringify({ email }) });
+      setInvite({ email, url: r.inviteUrl });
+    }, `Invite link created for ${email}.`);
+    form?.reset();
+  }
   async function add(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
-    const email = String(new FormData(form).get("email") || "");
-    await run(() => api("/api/admin/users", { method: "POST", body: JSON.stringify({ email }) }), `${email} can now sign in as an editor.`);
-    form.reset();
+    await sendInvite(String(new FormData(form).get("email") || ""), form);
   }
   return (
     <div className="admin-content-view">
       <div className="content-toolbar">
         <div>
           <h2>Team &amp; access</h2>
-          <p>People sign in with their own ChatGPT account. Turn on multi-factor authentication in that account&apos;s security settings.</p>
+          <p>Everyone signs in with a password and an authenticator-app code (required). Editors join through a single-use invite link that expires after 72 hours.</p>
         </div>
       </div>
       <div className="role-table admin-panel-card">
@@ -1177,6 +1211,7 @@ function Team({ data, upgraded, run, askDelete }: { data: Data; upgraded: boolea
               <small>Added {fmtDate(u.created_at)}</small>
             </div>
             <div className="item-actions">
+              <button onClick={() => sendInvite(u.email)}>New invite link</button>
               <button className="danger" onClick={() => askDelete(u.email, `/api/admin/users?email=${encodeURIComponent(u.email)}`, "Editor removed.")}>
                 Remove
               </button>
@@ -1184,13 +1219,23 @@ function Team({ data, upgraded, run, askDelete }: { data: Data; upgraded: boolea
           </article>
         ))}
       </div>
+      {invite ? (
+        <div className="admin-panel-card invite-card" role="status">
+          <b>Send this link to {invite.email}</b>
+          <p>It works once and expires in 72 hours. Anyone with the link can create this editor account, so send it privately.</p>
+          <div className="copy-row">
+            <input readOnly value={invite.url} aria-label="Invite link" onFocus={(e) => e.currentTarget.select()} />
+            <button type="button" onClick={() => navigator.clipboard?.writeText(invite.url).catch(() => {})}>Copy</button>
+          </div>
+        </div>
+      ) : null}
       {upgraded ? (
         <form className="admin-form pro-form inline-form" onSubmit={add}>
           <label>
             Invite editor by email
             <input name="email" type="email" required placeholder="name@example.com" />
           </label>
-          <button>Add editor</button>
+          <button>Invite editor</button>
         </form>
       ) : (
         <p className="editor-note">Editors can be added after the database upgrade.</p>
@@ -1206,6 +1251,7 @@ function DatabaseView({ data, notify, reload }: { data: Data; notify: (k: Toast[
   const [phrase, setPhrase] = useState("");
   const [report, setReport] = useState<Record<string, unknown> | null>(null);
   const upgraded = data.schemaVersion >= 1;
+  if (data.dbState === "uninitialized") return <DatabaseSetup notify={notify} reload={reload} />;
 
   async function download() {
     setBusy(true);
@@ -1336,6 +1382,205 @@ function DatabaseView({ data, notify, reload }: { data: Data; notify: (k: Toast[
           </div>
         </article>
       ) : null}
+    </div>
+  );
+}
+
+// ---------- Vercel: first-time database setup ----------
+function DatabaseSetup({ notify, reload }: { notify: (k: Toast["kind"], t: string) => void; reload: () => Promise<void> }) {
+  const [file, setFile] = useState<{ name: string; text: string } | null>(null);
+  const [info, setInfo] = useState<{ counts: Record<string, number>; fileShaOk: boolean; sourceVersion: number; sha256: string } | null>(null);
+  const [report, setReport] = useState<Record<string, unknown> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [phrase, setPhrase] = useState("");
+
+  async function choose(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setInfo(null);
+    setReport(null);
+    const text = await f.text();
+    setFile({ name: f.name, text });
+    setBusy(true);
+    try {
+      setInfo(await api("/api/admin/database?action=inspect", { method: "POST", body: text, headers: { "content-type": "text/plain" } }));
+    } catch (err) {
+      notify("error", (err as Error).message);
+      setFile(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runImport() {
+    if (!file) return;
+    setBusy(true);
+    const r = await fetch("/api/admin/database?action=import", { method: "POST", body: file.text, headers: { "content-type": "text/plain" } });
+    const data = (await r.json().catch(() => ({}))) as { error?: string; report?: Record<string, unknown> };
+    setBusy(false);
+    if (data.report) setReport(data.report);
+    if (r.ok) {
+      notify("ok", "Backup imported and verified row by row.");
+      reload();
+    } else notify("error", data.error || "Import failed verification. See the report.");
+  }
+
+  async function init() {
+    setBusy(true);
+    try {
+      await api("/api/admin/database?action=init", { method: "POST" });
+      notify("ok", "Original portfolio content added.");
+      reload();
+    } catch (err) {
+      notify("error", (err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="admin-content-view db-view">
+      <div className="content-toolbar">
+        <div>
+          <h2>Set up the database</h2>
+          <p>This database is new and empty. Choose one option. Both refuse to run once any content exists, so nothing can be overwritten.</p>
+        </div>
+      </div>
+      <article className="admin-panel-card step-card">
+        <span className="step-n">A</span>
+        <div>
+          <h3>Import a backup (recommended)</h3>
+          <p>Use the .sql file from <b>Database &amp; backup → Download backup</b> on the live site. The file&apos;s fingerprint is checked first, then every row is imported in one step and compared with the file.</p>
+          <label className="upload-button">
+            {busy && !info ? "Reading…" : file ? "Choose a different file" : "Choose backup file (.sql)"}
+            <input type="file" accept=".sql,text/plain" onChange={choose} hidden />
+          </label>
+          {file && info ? (
+            <div className={info.fileShaOk ? "backup-proof" : "admin-error"}>
+              <p><b>{file.name}</b> · {info.fileShaOk ? "fingerprint verified ✓" : "fingerprint does NOT match — file is incomplete or edited"}</p>
+              <p>Rows: {Object.entries(info.counts).map(([t, n]) => `${t} ${n}`).join(" · ")}</p>
+              <p>{info.sourceVersion >= 1 ? "Backup from the upgraded admin (includes site text)." : "Backup from the original site: the original portfolio content will be added after import, as with the upgrade."}</p>
+              <p className="mono">SHA-256 {info.sha256}</p>
+            </div>
+          ) : null}
+          {file && info?.fileShaOk ? (
+            <>
+              <label>
+                Type <b>IMPORT</b> to confirm
+                <input value={phrase} onChange={(e) => setPhrase(e.target.value)} autoComplete="off" />
+              </label>
+              <button className="primary" disabled={phrase !== "IMPORT" || busy} onClick={runImport}>
+                {busy ? "Importing…" : "Import backup"}
+              </button>
+            </>
+          ) : null}
+        </div>
+      </article>
+      <article className="admin-panel-card step-card">
+        <span className="step-n">B</span>
+        <div>
+          <h3>Start with the original portfolio content</h3>
+          <p>Adds the 10 projects, services, skills, blog posts, experience and site text from the original site. Use this only for a fresh preview; it does not include the live site&apos;s messages or analytics.</p>
+          <button className="primary" onClick={init} disabled={busy}>Start with original content</button>
+        </div>
+      </article>
+      {report ? (
+        <article className="admin-panel-card">
+          <h3>Import report</h3>
+          <pre className="mono">{JSON.stringify(report, null, 2)}</pre>
+        </article>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------- My security ----------
+type SecurityInfo = { email: string; recoveryCodesLeft: number; sessions: { current: boolean; createdAt: number; lastSeenAt: number; ip: string | null; userAgent: string | null }[] };
+
+function SecurityView({ notify }: { notify: (k: Toast["kind"], t: string) => void }) {
+  const [info, setInfo] = useState<SecurityInfo | null>(null);
+  const [codes, setCodes] = useState<string[] | null>(null);
+  const load = useCallback(() => {
+    api<SecurityInfo>("/api/admin/security").then(setInfo, (e) => notify("error", (e as Error).message));
+  }, [notify]);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function post(body: Record<string, unknown>, ok: string, form?: HTMLFormElement) {
+    try {
+      const r = await api<{ recoveryCodes?: string[] }>("/api/admin/security", { method: "POST", body: JSON.stringify(body) });
+      if (r.recoveryCodes) setCodes(r.recoveryCodes);
+      notify("ok", ok);
+      form?.reset();
+      load();
+    } catch (e) {
+      notify("error", (e as Error).message);
+    }
+  }
+
+  return (
+    <div className="admin-content-view db-view">
+      <div className="content-toolbar">
+        <div>
+          <h2>My security</h2>
+          <p>{info?.email} · two-step sign-in is always on.</p>
+        </div>
+      </div>
+      <form
+        className="admin-panel-card settings-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const f = new FormData(e.currentTarget);
+          if (f.get("newPassword") !== f.get("confirm")) return notify("error", "The new passwords don't match.");
+          post({ action: "password", currentPassword: f.get("currentPassword"), newPassword: f.get("newPassword"), code: f.get("code") }, "Password changed. Other sessions were signed out.", e.currentTarget);
+        }}
+      >
+        <h3>Change password</h3>
+        <div className="field-grid">
+          <label>Current password<input name="currentPassword" type="password" autoComplete="current-password" required /></label>
+          <label>Authenticator code<input name="code" inputMode="numeric" autoComplete="one-time-code" required maxLength={7} /></label>
+          <label>New password<input name="newPassword" type="password" autoComplete="new-password" minLength={12} required /></label>
+          <label>Repeat new password<input name="confirm" type="password" autoComplete="new-password" minLength={12} required /></label>
+        </div>
+        <div className="modal-footer"><button className="primary">Change password</button></div>
+      </form>
+      <form
+        className="admin-panel-card"
+        onSubmit={(e) => {
+          e.preventDefault();
+          post({ action: "recovery-codes", code: new FormData(e.currentTarget).get("code") }, "New recovery codes created. The old ones no longer work.", e.currentTarget);
+        }}
+      >
+        <h3>Recovery codes</h3>
+        <p className="editor-note">{info ? `${info.recoveryCodesLeft} of 8 unused.` : "…"} Each one signs you in once if you lose your phone.</p>
+        {codes ? (
+          <ol className="recovery-codes">{codes.map((c) => <li key={c}><code>{c}</code></li>)}</ol>
+        ) : null}
+        <div className="inline-form">
+          <label>Authenticator code<input name="code" inputMode="numeric" autoComplete="one-time-code" required maxLength={7} /></label>
+          <button>Create new codes</button>
+        </div>
+      </form>
+      <article className="admin-panel-card">
+        <div className="panel-heading">
+          <div><span>SESSIONS</span><h2>Where you&apos;re signed in</h2></div>
+          <button className="link-button" onClick={() => post({ action: "signout-others" }, "Signed out of all other sessions.")}>Sign out everywhere else</button>
+        </div>
+        <div className="recent-list">
+          {info?.sessions.map((s, i) => (
+            <div key={i}>
+              <i className={s.current ? "message" : "content"} />
+              <span>
+                <b>{s.current ? "This browser" : (s.userAgent || "Unknown browser").slice(0, 60)}</b>
+                <small>{s.ip || "unknown IP"} · signed in {new Date(s.createdAt).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" })}</small>
+              </span>
+              <time>{new Date(s.lastSeenAt).toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit" })}</time>
+            </div>
+          ))}
+        </div>
+      </article>
     </div>
   );
 }

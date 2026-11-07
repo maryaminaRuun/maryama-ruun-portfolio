@@ -5,7 +5,7 @@ import { importBackup, ImportError, parseValues, splitStatements } from "../lib/
 import { ensureAppSchema, ensureLegacyTables, getDbState, getSchemaVersion } from "../lib/db/schema";
 import { applyUpgradeV1, initializeWithOriginalContent } from "../lib/db/upgrade";
 import { loadContentFrom, selectHomepageProjects } from "../lib/content";
-import { saveMedia } from "../lib/media";
+import { readMedia } from "../lib/media";
 import { createSqliteD1 } from "./helpers/sqlite-d1";
 
 /** The live ChatGPT Sites database shape (v0) with realistic rows, including tricky text. */
@@ -61,7 +61,8 @@ test("import a v1 backup (with settings and DB-stored images) round-trips exactl
   await applyUpgradeV1(src, "o", (await exportDatabase(src)).sha256);
   await src.prepare("UPDATE site_settings SET value='https://www.linkedin.com/in/x' WHERE key='linkedin_url'").run();
   const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1, 2, 3, 255]);
-  await saveMedia(src, null, { bytes: PNG, name: "p.png" }, "o");
+  // Image stored the way the ChatGPT Sites admin stores it (no url column there).
+  await src.prepare("INSERT INTO media (id, filename, content_type, size, storage, data, alt, created_at, created_by) VALUES ('abc-1.png','p.png','image/png',13,'d1',?,'', '2026-11-01T00:00:00Z','o')").bind(PNG).run();
   const backup = await exportDatabase(src);
 
   const db = await freshVercelDb();
@@ -73,6 +74,8 @@ test("import a v1 backup (with settings and DB-stored images) round-trips exactl
   for (const t of Object.keys(backup.counts)) assert.ok(again.counts[t]! >= backup.counts[t]!, t);
   const c = await loadContentFrom(db);
   assert.equal(c.settings.linkedin_url, "https://www.linkedin.com/in/x");
+  const img = await readMedia(db, "abc-1.png");
+  assert.ok(img && "bytes" in img && img.bytes.byteLength === PNG.byteLength, "database-stored image still served after import");
 });
 
 test("import refuses a non-empty database, a tampered file, and foreign SQL", async () => {

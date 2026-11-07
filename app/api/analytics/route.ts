@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { columnNames } from "../../../lib/db/schema";
-import { ensurePortfolioTables } from "../../../lib/portfolio-db";
+import { ensurePortfolioTables, isInitialized } from "../../../lib/portfolio-db";
 import { clientIp, rateLimit } from "../../../lib/security";
 
 const BOT_RE = /bot|crawler|spider|crawling|preview|headless|lighthouse|monitor/i;
@@ -29,7 +29,9 @@ export async function POST(request: Request) {
   const path = typeof b.path === "string" && b.path.startsWith("/") && !b.path.startsWith("/admin") ? b.path.slice(0, 120) : "/";
   const session = typeof b.session === "string" && /^[a-z0-9-]{4,80}$/i.test(b.session) ? b.session : "anonymous";
 
-  const db = await ensurePortfolioTables();
+  const db = await ensurePortfolioTables().catch(() => null);
+  // Nothing is recorded until the database has been set up (keeps imports clean).
+  if (!db || !(await isInitialized(db))) return NextResponse.json({ ok: true, skipped: "not-initialized" });
   if (!(await rateLimit(db, `views:${clientIp(request)}`, 120, 600))) return NextResponse.json({ ok: true, skipped: "rate" });
 
   const now = new Date().toISOString();
@@ -38,7 +40,7 @@ export async function POST(request: Request) {
     const ownHost = new URL(request.url).host.replace(/^www\./, "");
     await db
       .prepare("INSERT INTO page_views(path,session_id,viewed_at,referrer,country,device) VALUES(?,?,?,?,?,?)")
-      .bind(path, session, now, referrerHost(b.referrer, ownHost), (request.headers.get("cf-ipcountry") || "").slice(0, 2) || null, deviceOf(ua))
+      .bind(path, session, now, referrerHost(b.referrer, ownHost), (request.headers.get("x-vercel-ip-country") || request.headers.get("cf-ipcountry") || "").slice(0, 2) || null, deviceOf(ua))
       .run();
   } else {
     await db.prepare("INSERT INTO page_views(path,session_id,viewed_at) VALUES(?,?,?)").bind(path, session, now).run();

@@ -33,7 +33,7 @@ export async function rateLimit(db: D1Like | null, bucket: string, limit: number
 }
 
 export function clientIp(request: Request): string {
-  return request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  return request.headers.get("x-real-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("cf-connecting-ip") || "unknown";
 }
 
 /** Rejects cross-site state-changing requests (CSRF defence for cookie/header-based auth). */

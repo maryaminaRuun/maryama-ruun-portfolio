@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { addEditor, AdminError, createItem, deleteRow, getDashboard, getItem, reorderItems, removeEditor, setItemFeatured, updateItem, updateSettings, validateItem } from "../lib/admin-content";
 import { exportDatabase } from "../lib/db/backup";
-import { ensureLegacyTables } from "../lib/db/schema";
+import { ensureAppSchema, ensureLegacyTables } from "../lib/db/schema";
 import { applyUpgradeV1 } from "../lib/db/upgrade";
 import { loadContentFrom, selectHomepageProjects } from "../lib/content";
-import { deleteMedia, MAX_D1_BYTES, MediaError, readMedia, saveMedia, sniffImageType } from "../lib/media";
+import { deleteMedia, MAX_D1_BYTES, MediaError, readMedia, saveMedia, sniffImageType, type BlobStoreLike } from "../lib/media";
 import { cleanUrl, isSameOrigin } from "../lib/security";
 import { resolveRole as resolveRoleForTest } from "../lib/roles";
 import { createSqliteD1 } from "./helpers/sqlite-d1";
@@ -14,6 +14,7 @@ async function upgradedDb() {
   const db = createSqliteD1();
   await ensureLegacyTables(db);
   await applyUpgradeV1(db, "owner@test", (await exportDatabase(db)).sha256);
+  await ensureAppSchema(db);
   return db;
 }
 
@@ -132,30 +133,32 @@ test("media: real image signatures only, size limit, safe delete", async () => {
   await assert.rejects(saveMedia(db, null, { bytes: big, name: "big.png" }, "o"), /too large/);
 
   const saved = await saveMedia(db, null, { bytes: PNG, name: "shot.png" }, "o", "Screenshot");
-  const read = await readMedia(db, null, saved.id);
-  assert.deepEqual([...new Uint8Array(read!.bytes)], [...PNG]);
+  const read = await readMedia(db, saved.id);
+  if (!read || !("bytes" in read)) throw new Error("expected image bytes");
+  assert.deepEqual([...new Uint8Array(read.bytes)], [...PNG]);
   const id = await createItem(db, { type: "project", title: "With image", image: saved.url });
   await assert.rejects(deleteMedia(db, null, saved.id), /still used/);
   await deleteRow(db, "items", id);
   await deleteMedia(db, null, saved.id);
-  assert.equal(await readMedia(db, null, saved.id), null);
+  assert.equal(await readMedia(db, saved.id), null);
 });
 
-test("media: R2 storage path", async () => {
+test("media: Vercel Blob storage path", async () => {
   const db = await upgradedDb();
   const store = new Map<string, Uint8Array>();
-  const r2 = {
-    async put(k: string, v: Uint8Array | ArrayBuffer) { store.set(k, v instanceof Uint8Array ? v : new Uint8Array(v)); },
-    async get(k: string) { const v = store.get(k); return v ? { arrayBuffer: async () => v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength) as ArrayBuffer } : null; },
-    async delete(k: string) { store.delete(k); },
+  const blob: BlobStoreLike = {
+    async put(pathname, bytes) { const url = `https://blob.example/${pathname}`; store.set(url, bytes); return { url }; },
+    async del(url) { store.delete(url); },
   };
-  const saved = await saveMedia(db, r2, { bytes: PNG, name: "r2.png" }, "o");
+  const saved = await saveMedia(db, blob, { bytes: PNG, name: "b.png" }, "o");
+  assert.equal(saved.url, `/media/${saved.id}`, "content keeps a stable address");
   assert.equal(store.size, 1);
-  const row = await db.prepare("SELECT storage, data FROM media WHERE id=?").bind(saved.id).first<{ storage: string; data: unknown }>();
-  assert.equal(row?.storage, "r2");
+  const row = await db.prepare("SELECT storage, data, url FROM media WHERE id=?").bind(saved.id).first<{ storage: string; data: unknown; url: string }>();
+  assert.equal(row?.storage, "blob");
   assert.equal(row?.data, null);
-  assert.equal((await readMedia(db, r2, saved.id))!.bytes.byteLength, PNG.byteLength);
-  await deleteMedia(db, r2, saved.id);
+  const read = await readMedia(db, saved.id);
+  assert.deepEqual(read, { redirect: row!.url });
+  await deleteMedia(db, blob, saved.id);
   assert.equal(store.size, 0);
 });
 

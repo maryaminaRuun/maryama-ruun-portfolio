@@ -2,7 +2,7 @@
 // tested against SQLite. Route handlers in app/api/admin/* call these.
 import { defaultSettings, HOMEPAGE_PROJECT_COUNT, type SettingKey } from "../app/site-data";
 import { slugify } from "./db/upgrade";
-import { getSchemaVersion, tableExists } from "./db/schema";
+import { getDbState, getSchemaVersion, tableExists } from "./db/schema";
 import type { D1Like, D1PreparedStatementLike, SqlValue } from "./db/types";
 import { cleanText, cleanUrl, EMAIL_RE } from "./security";
 import { OWNER_EMAIL_LOWER } from "./owner";
@@ -239,6 +239,8 @@ export async function getDashboard(db: D1Like, role: "owner" | "editor", days = 
   ]);
   return {
     schemaVersion: version,
+    dbState: await getDbState(db),
+    storage: { images: process.env.BLOB_READ_WRITE_TOKEN ? "Vercel Blob" : "Database (connect Vercel Blob for larger images)" },
     items, messages,
     analytics: { range, summary, daily, pages, referrers, countries, devices },
     settings: { ...defaultSettings, ...Object.fromEntries((settings as { key: string; value: string }[]).map((s) => [s.key, s.value])) },
