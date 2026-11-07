@@ -34,13 +34,6 @@ jobs:
           name: package-lock
           path: package-lock.json
 
-      - name: Print lockfile (gzip+base64, for committing)
-        run: |
-          echo "LOCKFILE-BEGIN"
-          gzip -9c package-lock.json | base64 -w 0
-          echo
-          echo "LOCKFILE-END"
-
       - name: Lint
         run: npm run lint
 
