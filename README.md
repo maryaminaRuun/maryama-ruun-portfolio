@@ -21,34 +21,37 @@ A modern full-stack portfolio website for Maryama Ruun, Software Engineer and Fu
 - Light and dark theme support
 - Mobile-friendly navigation and layouts
 
-## Technology
+## Technology (branch `vercel-migration`)
 
-- React
-- TypeScript
-- Vinext / Vite
-- Cloudflare Workers
-- Cloudflare D1
-- Drizzle ORM
-- CSS
+- Next.js 16 (App Router), React 19, TypeScript
+- Hosted on Vercel
+- Turso (libSQL / SQLite) database
+- Vercel Blob for images
+- Built-in admin sign-in with required authenticator-app MFA
+
+See [docs/VERCEL.md](docs/VERCEL.md) for configuration, data import and the production switch.
 
 ## Local development
 
 ```bash
-npm install
-npm run dev
+npm ci
+AUTH_SECRET=$(openssl rand -hex 24) ADMIN_SETUP_KEY=local-setup-key-123 npm run dev   # uses ./local.db
 ```
 
 ## Tests
 
 ```bash
-npm run test:logic   # database, backup, upgrade, CRUD, roles, media (no build needed)
-npm test             # production build + rendered HTML test
+npm run lint && npm run typecheck
+npm test             # database, backup/import, auth/MFA, CRUD, roles, media
+npm run build
+npm run test:e2e     # browser tests against `next start` (see .github/workflows/ci.yml)
 ```
 
 ## Documentation
 
 - [Database backup & upgrade](docs/UPGRADE-AND-BACKUP.md)
-- [Installation & deployment](docs/DEPLOYMENT.md)
+- [Vercel migration runbook](docs/VERCEL.md)
+- [Installation & deployment (ChatGPT Sites version)](docs/DEPLOYMENT.md)
 - [Test report](docs/TEST-REPORT.md)
 
 ## Production build

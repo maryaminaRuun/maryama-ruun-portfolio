@@ -1,3 +1,5 @@
+> **Note:** this describes the ChatGPT Sites / Cloudflare version (branch `redesign/portfolio-admin-v2`). For the Vercel version on this branch, see [VERCEL.md](VERCEL.md).
+
 # Installation & deployment guide
 
 ## Stack (unchanged)
