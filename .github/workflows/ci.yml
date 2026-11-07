@@ -4,6 +4,7 @@ on:
     branches: [vercel-migration]
   pull_request:
     branches: [vercel-migration]
+  deployment_status:
   workflow_dispatch:
 
 permissions:
@@ -11,6 +12,7 @@ permissions:
 
 jobs:
   verify:
+    if: github.event_name != 'deployment_status'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -31,6 +33,13 @@ jobs:
         with:
           name: package-lock
           path: package-lock.json
+
+      - name: Print lockfile (gzip+base64, for committing)
+        run: |
+          echo "LOCKFILE-BEGIN"
+          gzip -9c package-lock.json | base64 -w 0
+          echo
+          echo "LOCKFILE-END"
 
       - name: Lint
         run: npm run lint
@@ -74,3 +83,21 @@ jobs:
           name: e2e-screenshots
           path: e2e-screenshots/
           if-no-files-found: ignore
+
+  preview-smoke:
+    # Runs after Vercel finishes a Preview deployment. Read-only: never writes data.
+    if: github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Preview'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund playwright@1.64.1
+      - run: npx playwright install --with-deps chromium
+      - name: Read-only checks against the Preview
+        env:
+          PREVIEW_URL: ${{ github.event.deployment_status.environment_url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: node tests/e2e/preview-smoke.mjs
