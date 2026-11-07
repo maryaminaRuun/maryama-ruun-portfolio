@@ -1,7 +1,7 @@
 import { defaultSettings, experience, featuredPostSlug, HOMEPAGE_PROJECT_COUNT, posts, projects, services, skillGroups } from "../../app/site-data";
 import { exportDatabase } from "./backup";
 import { applySchemaV1, ensureLegacyTables, getSchemaVersion } from "./schema";
-import type { D1Like, SqlValue } from "./types";
+import type { D1Like, D1PreparedStatementLike, SqlValue } from "./types";
 
 export function slugify(text: string): string {
   return text
@@ -82,7 +82,7 @@ export async function applyUpgradeV1(db: D1Like, actor: string, backupSha256: st
   const now = new Date().toISOString();
   const inserted: Record<string, number> = {};
   const skippedExisting: Record<string, number> = {};
-  const writes = [];
+  const writes: D1PreparedStatementLike[] = [];
   for (const row of buildSeedRows()) {
     const existing = await db
       .prepare("SELECT id FROM content_items WHERE type = ? AND status = 'published' AND lower(trim(title)) = lower(trim(?)) LIMIT 1")

@@ -13,7 +13,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     if (!(await tableExists(db, "media"))) return new Response("Not found", { status: 404 });
     const media = await readMedia(db, await getEnvBinding<R2Like>(r2Binding), id);
     if (!media) return new Response("Not found", { status: 404 });
-    return new Response(media.bytes, {
+    const body = media.bytes instanceof ArrayBuffer ? media.bytes : media.bytes.slice().buffer;
+    return new Response(body, {
       headers: {
         "content-type": media.type,
         "cache-control": "public, max-age=31536000, immutable",

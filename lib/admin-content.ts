@@ -3,7 +3,7 @@
 import { defaultSettings, HOMEPAGE_PROJECT_COUNT, type SettingKey } from "../app/site-data";
 import { slugify } from "./db/upgrade";
 import { getSchemaVersion, tableExists } from "./db/schema";
-import type { D1Like, SqlValue } from "./db/types";
+import type { D1Like, D1PreparedStatementLike, SqlValue } from "./db/types";
 import { cleanText, cleanUrl, EMAIL_RE } from "./security";
 import { OWNER_EMAIL_LOWER } from "./owner";
 
@@ -182,7 +182,7 @@ export async function updateSettings(db: D1Like, values: Record<string, unknown>
   if (!(await upgraded(db))) throw new AdminError("Apply the database upgrade first to edit site text.", 409);
   const now = new Date().toISOString();
   const urlKeys = new Set(["github_url", "linkedin_url", "site_url"]);
-  const writes = [];
+  const writes: D1PreparedStatementLike[] = [];
   for (const key of Object.keys(defaultSettings) as SettingKey[]) {
     if (!(key in values)) continue;
     let v = cleanText(values[key], key === "bio" ? 4000 : 500);
